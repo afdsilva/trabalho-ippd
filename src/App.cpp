@@ -9,11 +9,69 @@
 #include "Delaunay.h"
 
 #include <iostream>
+#include <thread>         // std::thread
+#include <vector>
+
+class point2d;
+
+typedef std::vector<point2d> vetPoint;
+typedef std::vector<point2d>::iterator itPoint;
+
+class point2d {
+public:
+	int x,y;
+	point2d() : x(0), y(0) {}
+	point2d(int nx,int ny) {
+		x = nx;
+		y = ny;
+	}
+	void operator() (const point2d & p) {
+		if (this->x == p.x && this->y == p.y) {
+			cout << "encontrou (" << p.x << "," << p.y << ")" << endl;
+		}
+	}
+};
+
+void meuTesteThread(itPoint begin, itPoint end, int thread) {
+	for(itPoint it = begin; it != end; it++) {
+		point2d p = *it;
+		cout << "Thread " << thread << " Processando(" << p.x << "," << p.y << ")" << endl;
+		sf::sleep(sf::seconds(0.1));
+	}
+
+}
 
 int main(int argc, char **argv) {
 
 	App aPath ;
 	return aPath.AppExec();
+//
+//	int n_threads = 10;
+//	int n_points = 100;
+//	std::vector<point2d> vetor;
+//	for (int p = 0; p < n_points; p++) {
+//		int x = rand() % 640;
+//		int y = rand() % 480;
+//		vetor.push_back(point2d(x,y));
+//	}
+//	//for_each(vetor.begin(), vetor.end(), point2d(5,5));
+//	cout << "Fim" << endl;
+//	int n = n_points / n_threads;
+//	std::vector<std::thread *> vetorThreads;
+//	for (int i = 0; i < n_threads; i++) {
+//		itPoint itbegin = vetor.begin() + n * i;
+//		itPoint itend = vetor.begin() + n * (i + 1);
+//		std::thread * t = new std::thread(meuTesteThread,itbegin,itend,i);
+//		vetorThreads.push_back(t);
+//		//std::thread t (
+//		//std::thread first (foo);     // spawn new thread that calls foo()
+//		//std::thread second (bar,0);  // spawn new thread that calls bar(0)
+//	}
+//	for (int i = 0; i < n_threads; i++)
+//		vetorThreads[i]->join();
+//	//first.join();                // pauses until first finishes
+//	//second.join();               // pauses until second finishes
+
 }
 
 App::App() {

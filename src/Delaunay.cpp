@@ -1,268 +1,186 @@
 #include "Delaunay.h"
-#include <thread>
 
-const REAL sqrt3 = 1.732050808F;
+const float sqrt3 = 1.732050808f;
 
-void triangle::SetCircumCircle() {
-	REAL x0 = m_Vertices[0]->GetX();
-	REAL y0 = m_Vertices[0]->GetY();
-
-	REAL x1 = m_Vertices[1]->GetX();
-	REAL y1 = m_Vertices[1]->GetY();
-
-	REAL x2 = m_Vertices[2]->GetX();
-	REAL y2 = m_Vertices[2]->GetY();
-
-	REAL y10 = y1 - y0;
-	REAL y21 = y2 - y1;
-
-	bool b21zero = y21 > -REAL_EPSILON && y21 < REAL_EPSILON;
-
-	if (y10 > -REAL_EPSILON && y10 < REAL_EPSILON) {
-		if (b21zero) { // All three vertices are on one horizontal line.
-			if (x1 > x0) {
-				if (x2 > x1) x1 = x2;
-			}
-			else {
-				if (x2 < x0) x0 = x2;
-			}
-			m_Center.X = (x0 + x1) * .5F;
-			m_Center.Y = y0;
-		} else { // m_Vertices[0] and m_Vertices[1] are on one horizontal line.
-			REAL m1 = - (x2 - x1) / y21;
-
-			REAL mx1 = (x1 + x2) * .5F;
-			REAL my1 = (y1 + y2) * .5F;
-
-			m_Center.X = (x0 + x1) * .5F;
-			m_Center.Y = m1 * (m_Center.X - mx1) + my1;
-		}
-	}
-	else if (b21zero) { // m_Vertices[1] and m_Vertices[2] are on one horizontal line.
-		REAL m0 = - (x1 - x0) / y10;
-
-		REAL mx0 = (x0 + x1) * .5F;
-		REAL my0 = (y0 + y1) * .5F;
-
-		m_Center.X = (x1 + x2) * .5F;
-		m_Center.Y = m0 * (m_Center.X - mx0) + my0;
-	} else { // 'Common' cases, no multiple vertices are on one horizontal line.
-		REAL m0 = - (x1 - x0) / y10;
-		REAL m1 = - (x2 - x1) / y21;
-
-		REAL mx0 = (x0 + x1) * .5F;
-		REAL my0 = (y0 + y1) * .5F;
-
-		REAL mx1 = (x1 + x2) * .5F;
-		REAL my1 = (y1 + y2) * .5F;
-
-		m_Center.X = (m0 * mx0 - m1 * mx1 + my1 - my0) / (m0 - m1);
-		m_Center.Y = m0 * (m_Center.X - mx0) + my0;
-	}
-
-	REAL dx = x0 - m_Center.X;
-	REAL dy = y0 - m_Center.Y;
-
-	m_R2 = dx * dx + dy * dy;	// the radius of the circumcircle, squared
-	m_R = (REAL) sqrt(m_R2);	// the proper radius
-
-	m_R2 *= 1.000001f;
-}
-
-// Function object to check whether a triangle has one of the vertices in SuperTriangle.
-// operator() returns true if it does.
-class triangleHasVertex
-{
+class vertexIsInCC {
 public:
-	triangleHasVertex(vertex SuperTriangle[3]) : m_pSuperTriangle(SuperTriangle)	{}
-	bool operator()(const triangle& tri) const {
-		for (int i = 0; i < 3; i++) {
-			const vertex * p = tri.GetVertex(i);
-			if (p >= m_pSuperTriangle && p < (m_pSuperTriangle + 3)) return true;
+	vertexIsInCC(const Vertex * v, edgeSet & output) : vertex(v), m_Edges(output) {}
+	bool operator()(const Triangle& tri) {
+		bool retorno = tri.CCEncompasses(vertex);
+		if (retorno) {
+			handleEdge(tri.getVertex(0),tri.getVertex(1));
+			handleEdge(tri.getVertex(1),tri.getVertex(2));
+			handleEdge(tri.getVertex(2),tri.getVertex(0));
 		}
-		return false;
+		return retorno;
 	}
 protected:
-	vertex * m_pSuperTriangle;
-};
-
-// Function object to check whether a triangle is 'completed', i.e. doesn't need to be checked
-// again in the algorithm, i.e. it won't be changed anymore.
-// Therefore it can be removed from the workset.
-// A triangle is completed if the circumcircle is completely to the left of the current vertex.
-// If a triangle is completed, it will be inserted in the output set, unless one or more of it's vertices
-// belong to the 'super triangle'.
-class triangleIsCompleted {
-public:
-	triangleIsCompleted(vIterator itVertex, triangleSet& output, vertex SuperTriangle[3])
-		: m_itVertex(itVertex)
-		, m_Output(output)
-		, m_pSuperTriangle(SuperTriangle)
-	{}
-	bool operator()(const triangle& tri) {
-		bool b = tri.IsLeftOf(m_itVertex);
-
-		if (b) {
-			triangleHasVertex thv(m_pSuperTriangle);
-			if (! thv(tri)) m_Output.insert(tri);
-		}
-		return b;
-	}
-protected:
-	vIterator m_itVertex;
-	triangleSet& m_Output;
-	vertex * m_pSuperTriangle;
-};
-
-// Function object to check whether vertex is in circumcircle of triangle.
-// operator() returns true if it does.
-// The edges of a 'hot' triangle are stored in the edgeSet edges.
-class vertexIsInCircumCircle
-{
-public:
-	vertexIsInCircumCircle(cvIterator itVertex, edgeSet& edges) : m_itVertex(itVertex), m_Edges(edges)	{}
-	bool operator()(const triangle& tri) {
-		bool b = tri.CCEncompasses(m_itVertex);
-
-		if (b) {
-			HandleEdge(tri.GetVertex(0), tri.GetVertex(1));
-			HandleEdge(tri.GetVertex(1), tri.GetVertex(2));
-			HandleEdge(tri.GetVertex(2), tri.GetVertex(0));
-		}
-		return b;
-	}
-protected:
-	void HandleEdge(const vertex * p0, const vertex * p1) {
-		const vertex * pVertex0(NULL);
-		const vertex * pVertex1(NULL);
-
-		// Create a normalized edge, in which the smallest vertex comes first.
-		if (* p0 < * p1)
-		{
+	void handleEdge(const Vertex * p0, const Vertex * p1) const {
+		const Vertex * pVertex0(NULL);
+		const Vertex * pVertex1(NULL);
+		if (*p0 < *p1) {
 			pVertex0 = p0;
 			pVertex1 = p1;
-		}
-		else
-		{
+		} else {
 			pVertex0 = p1;
 			pVertex1 = p0;
 		}
 
-		edge e(pVertex0, pVertex1);
+		Edge e(pVertex0,pVertex1);
+		eIterator found = m_Edges.find(e);
+		if (found == m_Edges.end()) m_Edges.insert(e);
+		else m_Edges.erase(found);
 
-		// Check if this edge is already in the buffer
-		edgeIterator found = m_Edges.find(e);
-
-		if (found == m_Edges.end()) m_Edges.insert(e);		// no, it isn't, so insert
-		else m_Edges.erase(found);							// yes, it is, so erase it to eliminate double edges
 	}
-
-	cvIterator m_itVertex;
-	edgeSet& m_Edges;
+	const Vertex * vertex;
+	edgeSet &m_Edges;
 };
 
-void Delaunay::Triangulate(vertexSet& vertices, triangleSet& output) {
-	if (vertices.size() < 3) return;	// nothing to handle
+class VertexCircunCircleParallel {
+public:
+	VertexCircunCircleParallel(const Vertex * v,const triangleSet & tInput, triangleSet & tOutput, edgeSet & eOutput,int n) : m_Vertex(v), m_Triangles(tInput), o_Triangles(tOutput), o_Edges(eOutput), n_threads(n) {}
 
-	// Determine the bounding box.
-	vIterator itVertex = vertices.begin();
+	void operator () (int thread) {
+		ctIterator it = m_Triangles.begin() + (thread * m_Triangles.size() / n_threads);
+		ctIterator itEnd = m_Triangles.begin() + ((thread + 1) * m_Triangles.size() / n_threads);
+		vertexIsInCC vic(m_Vertex,o_Edges);
 
-	REAL xMin = itVertex->GetX();
-	REAL yMin = itVertex->GetY();
-	REAL xMax = xMin;
-	REAL yMax = yMin;
-
-	++itVertex;		// If we're here, we know that vertices is not empty.
-	for (; itVertex != vertices.end(); itVertex++) {
-		xMax = itVertex->GetX();	// Vertices are sorted along the x-axis, so the last one stored will be the biggest.
-		REAL y = itVertex->GetY();
-		if (y < yMin) yMin = y;
-		if (y > yMax) yMax = y;
-	}
-
-	REAL dx = xMax - xMin;
-	REAL dy = yMax - yMin;
-
-	// Make the bounding box slightly bigger, just to feel safe.
-	REAL ddx = dx * 0.01F;
-	REAL ddy = dy * 0.01F;
-
-	xMin -= ddx;
-	xMax += ddx;
-	dx += 2 * ddx;
-
-	yMin -= ddy;
-	yMax += ddy;
-	dy += 2 * ddy;
-
-	// Create a 'super triangle', encompassing all the vertices. We choose an equilateral triangle with horizontal base.
-	// We could have made the 'super triangle' simply very big. However, the algorithm is quite sensitive to
-	// rounding errors, so it's better to make the 'super triangle' just big enough, like we do here.
-	vertex vSuper[3];
-
-	vSuper[0] = vertex(xMin - dy * sqrt3 / 3.0F, yMin);	// Simple highschool geometry, believe me.
-	vSuper[1] = vertex(xMax + dy * sqrt3 / 3.0F, yMin);
-	vSuper[2] = vertex((xMin + xMax) * 0.5F, yMax + dx * sqrt3 * 0.5F);
-
-	//triangleSet workset;
-	triangleList workset;
-	workset.push_back(triangle(vSuper));
-
-	for (itVertex = vertices.begin(); itVertex != vertices.end(); itVertex++) {
-		// First, remove all 'completed' triangles from the workset.
-		// A triangle is 'completed' if its circumcircle is entirely to the left of the current vertex.
-		// Vertices are sorted in x-direction (the set container does this automagically).
-		// Unless they are part of the 'super triangle', copy the 'completed' triangles to the output.
-		// The algorithm also works without this step, but it is an important optimalization for bigger numbers of vertices.
-		// It makes the algorithm about five times faster for 2000 vertices, and for 10000 vertices,
-		// it's thirty times faster. For smaller numbers, the difference is negligible.
-		//tIterator itEnd
-		ltIterator itEnd = remove_if(workset.begin(), workset.end(), triangleIsCompleted(itVertex, std::ref(output), vSuper));
-
-		edgeSet edges;
-		// A triangle is 'hot' if the current vertex v is inside the circumcircle.
-		// Remove all hot triangles, but keep their edges.
-		itEnd = remove_if(workset.begin(), itEnd, vertexIsInCircumCircle(itVertex, edges));
-		workset.erase(itEnd, workset.end());	// remove_if doesn't actually remove; we have to do this explicitly.
-		triangle t = *itEnd;
-		//t.show();
-
-		// Create new triangles from the edges and the current vertex.
-		for (edgeIterator it = edges.begin(); it != edges.end(); it++) {
-			triangle t(it->m_pV0, it->m_pV1, & (* itVertex));
-			workset.push_back(t);
+		for(; it != itEnd;it++) {
+			mutex.lock();
+			if (!vic(*it)) {
+				o_Triangles.push_back(*it);
+			}
+			mutex.unlock();
 		}
-		vertex v = *itVertex;
 	}
+protected:
+	const Vertex * m_Vertex;
+	const triangleSet & m_Triangles;
+	triangleSet &o_Triangles;
+	edgeSet &o_Edges;
+	int n_threads;
+	std::mutex mutex;
 
-	// Finally, remove all the triangles belonging to the 'super triangle' and move the remaining
-	// triangles tot the output; remove_copy_if lets us do that in one go.
-	tIterator where = output.begin();
-	remove_copy_if(workset.begin(), workset.end(), inserter(output, where), triangleHasVertex(vSuper));
-}
+};
 
-void Delaunay::TrianglesToEdges(triangleSet& triangles, edgeSet& edges) {
-	for (ctIterator it = triangles.begin(); it != triangles.end(); ++it) {
-		HandleEdge(it->GetVertex(0), it->GetVertex(1), edges);
-		HandleEdge(it->GetVertex(1), it->GetVertex(2), edges);
-		HandleEdge(it->GetVertex(2), it->GetVertex(0), edges);
+class InsertFinalTriangles {
+public:
+	InsertFinalTriangles(const Triangle & sT,const Quadtree & tree, triangleSet & output) : sTriangle(sT), quadtree(tree), triangles(output) {}
+	void operator() (const Triangle & t) {
+		for (int i = 0; i < 3; i++) {
+			const Vertex * p = t.getVertex(i);
+			for (int j = 0; j < 3; j++) {
+				if (p == sTriangle.getVertex(j))
+					return;
+			}
+		}
+		triangles.push_back(t);
 	}
-}
+protected:
+	const Triangle & sTriangle;
+	const Quadtree & quadtree;
+	triangleSet & triangles;
+};
 
-void Delaunay::HandleEdge(const vertex * p0, const vertex * p1, edgeSet& edges) {
-	const vertex * pV0(NULL);
-	const vertex * pV1(NULL);
+void Delaunay::Triangulate(const vertexSet & vertices, triangleSet & output) {
 
-	if (* p0 < * p1) {
-		pV0 = p0;
-		pV1 = p1;
+	try {
+		if (vertices.size() < 3)
+			throw;
+
+		cvIterator itVertex = vertices.begin();
+		Vertex * v = *itVertex;
+		float xMin = v->GetX();
+		float yMin = v->GetY();
+		float xMax = xMin;
+		float yMax = yMin;
+
+		++itVertex;
+		for (; itVertex != vertices.end(); itVertex++) {
+			v = *itVertex;
+			xMin = (v->GetX() < xMin ? v->GetX() : xMin);
+			xMax = (v->GetX() > xMax ? v->GetX() : xMax);
+			yMin = (v->GetY() < yMin ? v->GetY() : yMin);
+			yMax = (v->GetY() > yMax ? v->GetY() : yMax);
+		}
+		float dx = xMax - xMin;
+		float dy = yMax - yMin;
+
+		// Make the bounding box slightly bigger, just to feel safe.
+		float ddx = dx * 0.01f;
+		float ddy = dy * 0.01f;
+
+		xMin -= ddx;
+		xMax += ddx;
+		dx += 2 * ddx;
+
+		yMin -= ddy;
+		yMax += ddy;
+		dy += 2 * ddy;
+		int lastId = vertices.size();
+		Vertex * p0 = new Vertex(sf::Vector2f(xMin - dy * sqrt3 / 3.0f, yMin),lastId+1);
+		Vertex * p1 = new Vertex(sf::Vector2f(xMax + dy * sqrt3 / 3.0f, yMin),lastId+2);
+		Vertex * p2 = new Vertex(sf::Vector2f((xMin + xMax) * 0.5F, yMax + dx * sqrt3 * 0.5f),lastId+3);
+		Triangle sTriangle(p0,p1,p2);
+
+		triangleSet mesh;
+		triangleSet aux;
+		mesh.push_back(sTriangle);
+		output.clear();
+		Quadtree * tree = new Quadtree( 0.0f, 0.0f, 1024.0f, 768.0f, 0, 4);
+
+		for(itVertex = vertices.begin(); itVertex != vertices.end(); itVertex++) {
+			v = *itVertex;
+			//tree->AddObject(v);
+
+			edgeSet edges;
+			vertexIsInCC vic(v,edges);
+			aux.clear();
+			/**
+			 * Verifica todos triangulos que possuem o ponto circumscrito e salva as edges para reconstruir os triangulos
+			 * outros triangulos sao inseridos em uma variavel auxiliar para adicionar posteriormente
+			 */
+			//paralelismo, verificar os triangulos paralelamente, inserindo na lista (concorrente :/ ) os edges
+			int n_threads = 2;
+			std::vector<std::thread> lThreads;
+			VertexCircunCircleParallel obj (std::ref(v),std::ref(mesh),std::ref(aux),std::ref(edges),n_threads);
+			for (int k = 0; k < n_threads; k++) {
+//				obj(k);
+				lThreads.push_back(std::thread(std::ref(obj),k));
+			}
+			for (auto& th : lThreads)
+				th.join();
+
+			mesh.clear(); // limpa o mesh para renovar os triangulos
+			for(eIterator itEdges = edges.begin(); itEdges != edges.end(); itEdges++) {
+				Triangle nTriangle((Vertex *)itEdges->m_pV0, (Vertex *)itEdges->m_pV1,v);
+				mesh.push_back(nTriangle);
+			}
+			//insere os triangulos que nao foram modificados
+			for(tIterator itAux = aux.begin(); itAux != aux.end();itAux++) {
+//				//verificacao se as edges do triangulo modificado nao colidem com outras edges jah inseridas (era pra ser uma otimizacao, mas fica mais lento :v)
+				//mas acho que sei pq, eh q agora nao tem mais o problema q tinha antes, dele inserir triangulos que se sobrepoem
+//				Edge e01 = Edge(itAux->getVertex(0),itAux->getVertex(1));
+//				Edge e12 = Edge(itAux->getVertex(1),itAux->getVertex(2));
+//				Edge e20 = Edge(itAux->getVertex(2),itAux->getVertex(0));
+//				int edgesIguais = 0;
+//				for(eIterator itEdges = edges.begin(); itEdges != edges.end(); itEdges++) {
+//					if (*itEdges == e01 || *itEdges == e12 || *itEdges == e20) {
+//						edgesIguais++;
+//					}
+//				}
+//				//se mais de 2 edges forem iguais, nao adiciona o triangulo
+//				if (edgesIguais < 2) {
+//					mesh.insert(*itAux);
+//				}
+//
+				mesh.push_back(*itAux);
+			}
+		}
+		//output = mesh;
+		for_each(mesh.begin(),mesh.end(),InsertFinalTriangles(sTriangle,*tree,output));
+
+	} catch (int e) {
+		return;
 	}
-	else {
-		pV0 = p1;
-		pV1 = p0;
-	}
-
-	// Insert a normalized edge. If it's already in edges, insertion will fail,
-	// thus leaving only unique edges.
-	edges.insert(edge(pV0, pV1));
 }

@@ -13,6 +13,7 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <thread>
 
 std::vector<std::string> &split(const std::string &s, char delim, std::vector<std::string> &elems) {
     std::stringstream ss(s);
@@ -33,54 +34,54 @@ std::vector<std::string> split(const std::string &s, char delim) {
 StateMenu StateMenu::instance;
 
 StateMenu::StateMenu() {
+	mouseButton = false;
+	quadtree = new Quadtree( 0.0f, 0.0f, 1024.0f, 768.0f, 0, 4);
 }
-
 void StateMenu::OnActivation() {
 	Entidade::entityList.clear();
 
-	m_Vertices.clear();
-	m_Triangles.clear();
-	view.setCenter(sf::Vector2f(2000 / 2 - 1024 / 2, 2000 / 2 - 768 / 2));
+	//m_Vertices.clear();
+	//m_Triangles.clear();
+	view.setCenter(sf::Vector2f(0, 0));
 	view.setSize(sf::Vector2f(1024,768));
-	//view.setViewport(sf::FloatRect(1024, 768, 2000 / 2 - 1024 / 2, 2000 / 2 - 768 / 2));
-	/**
-	ifstream myfile;
-	myfile.open ("dados.txt");
-	if (myfile.is_open()) {
-		string line;
-		vector<string> ssplit;
-		while ( getline (myfile,line) ) {
-			ssplit = split(line,' ');
-			if (ssplit.size() > 0) {
-				int x = atoi(ssplit[0].c_str());
-				int y = !ssplit[1].empty() ? atoi(ssplit[1].c_str()) : atoi(ssplit[2].c_str());
-				if (y == 0) cout << line << endl;
-				m_Vertices.insert(vertex(x,y));
-			}
-			//cout << "X = " << ssplit[0] <<  " Y = " << ssplit[1] << endl;
-		}
 
-		myfile.close();
-	}
-	else cout << "Unable to open file";
-	**/
+
+
+	//view.setViewport(sf::FloatRect(1024, 768, 2000 / 2 - 1024 / 2, 2000 / 2 - 768 / 2));
+//	ifstream myfile;
+//	myfile.open ("dados.txt");
+//	if (myfile.is_open()) {
+//		string line;
+//		vector<string> ssplit;
+//		int i = 0;
+//		while ( getline (myfile,line) ) {
+//			ssplit = split(line,' ');
+//			if (ssplit.size() > 0) {
+//				int x = atoi(ssplit[0].c_str());
+//				int y = !ssplit[1].empty() ? atoi(ssplit[1].c_str()) : atoi(ssplit[2].c_str());
+//				if (y == 0) cout << line << endl;
+//				m_Vertices.insert(new Vertex(x,y,i));
+//				i++;
+//			}
+//			//cout << "X = " << ssplit[0] <<  " Y = " << ssplit[1] << endl;
+//		}
+//
+//		myfile.close();
+//	}
+//	else cout << "Unable to open file";
 
 	//gerando vertices aleatorios
-	/**/
-	for (int i = 0; i < 1000;i++) {
-		int x = rand() % 2000;
-		int y = rand() % 2000;
-		m_Vertices.insert(vertex(x,y));
-		//Circulo * mCirculo = new Circulo(sf::Vector2f(x,y),3);
-		//Entidade::entityList.push_back(mCirculo);
+	for (int i = 0; i < 5000;i++) {
+		int x = rand() % 1024;
+		int y = rand() % 768;
+		m_Vertices.insert(new Vertex(x,y,1));
 	}
-	/**/
-	Delaunay d;
-	d.Triangulate(m_Vertices, m_Triangles);
-	d.TrianglesToEdges(m_Triangles,m_Edges);
 
-	//Linha * mLinha = new Linha(sf::Vector2f(100,100), sf::Vector2f(200,200));
-	//Entidade::entityList.push_back(mLinha);
+	sf::Clock clock;
+	Delaunay::Triangulate(m_Vertices,m_Triangles);
+	sf::Time elapsed1 = clock.getElapsedTime();
+	std::cout << "Tempo de algoritmo: " << elapsed1.asSeconds() << " Entrada: " << m_Vertices.size() << " Saida: " << m_Triangles.size() << std::endl;
+	clock.restart();
 }
 void StateMenu::OnDeactivation() {
 	Entidade::entityList.clear();
@@ -94,11 +95,11 @@ void StateMenu::OnRender(sf::RenderWindow * window) {
 		window->draw(*e);
 	}
 	**/
-	for_each(m_Edges.begin(), m_Edges.end(), Linha(*window));
-	//for_each(m_Triangles.begin(), m_Triangles.end(), Triangulo(*window));
-	for_each(m_Vertices.begin(), m_Vertices.end(), Circulo(*window));
-
-	window->setView(view);
+	for_each(m_Triangles.begin(), m_Triangles.end(), drawTriangle(*window));
+	//for_each(m_Edges.begin(), m_Edges.end(), Linha(*window));
+	//quadtree->Draw(*window);
+	for_each(m_Vertices.begin(), m_Vertices.end(), drawVertex(*window));
+	//window->setView(view);
 	window->display();
 	window->clear(sf::Color::Black);
 }
@@ -117,12 +118,13 @@ void StateMenu::KeyPressed(sf::Event::KeyEvent keyEvent) {
 		view.move(-5,0);
 	if (keyEvent.code == sf::Keyboard::Right)
 		view.move(+5,0);
-	if(keyEvent.code == sf::Keyboard::C)
-		view.setCenter(sf::Vector2f(2000 / 2 - 1024 / 2,2000 / 2 - 768 / 2));
+	//if(keyEvent.code == sf::Keyboard::C)
+	//	view.setCenter(sf::Vector2f(2000 / 2 - 1024 / 2,2000 / 2 - 768 / 2));
 
 }
 
 void StateMenu::MouseMoved(sf::Event::MouseMoveEvent mouseMoveEvent) {
+	returnObjects = quadtree->GetObjectsAt( mouseMoveEvent.x, mouseMoveEvent.y );
 	if (mouseButton) {
 		float dx = mouseDrag.x - mouseMoveEvent.x;
 		float dy = mouseDrag.y - mouseMoveEvent.y;

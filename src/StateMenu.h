@@ -12,6 +12,7 @@
 #include "State.h"
 #include "Entidade.h"
 #include "Delaunay.h"
+#include "Quadtree.h"
 
 class StateMenu : public State {
 private:
@@ -23,8 +24,10 @@ private:
 
 	vertexSet m_Vertices;
 	triangleSet m_Triangles;
-	triangle t;
-	edgeSet m_Edges;
+	Quadtree * quadtree;
+	vector<Vertex*> returnObjects;
+	//triangle t;
+	//edgeSet m_Edges;
 	bool mouseButton;
 	sf::Vector2f mouseDrag;
 

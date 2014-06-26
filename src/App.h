@@ -14,6 +14,8 @@
 
 #include <SFML/Graphics.hpp>
 
+using namespace std;
+
 class App : public Eventos {
 private:
 	sf::RenderWindow window;
