@@ -9,7 +9,7 @@
 #define STATE_H_
 
 #include "State.h"
-#include "Eventos.h"
+#include "../gui/Eventos.h"
 #include <SFML/Graphics.hpp>
 
 class State : public Eventos {

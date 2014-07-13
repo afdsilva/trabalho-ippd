@@ -8,11 +8,13 @@
 #ifndef APP_H_
 #define APP_H_
 
-#include "StateManager.h"
-#include "Eventos.h"
-#include "FPS.h"
+#include "gui/StateManager.h"
+#include "gui/Eventos.h"
+#include "gui/FPS.h"
 
 #include <SFML/Graphics.hpp>
+#include <iostream>
+#include <exception>
 
 using namespace std;
 

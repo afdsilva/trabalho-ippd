@@ -9,12 +9,10 @@
 #define STATEMANAGER_H_
 enum {
 	STATE_NONE,
-	STATE_SPLASH,
 	STATE_MENU,
-	STATE_APP,
 };
 
-#include "State.h"
+#include "../states/State.h"
 
 class StateManager {
 private:
@@ -28,7 +26,6 @@ public:
 public:
 	static void SetActiveState(int stateId);
 	static State * GetActiveState();
-	static int GetActiveStateId();
 };
 
 #endif /* STATEMANAGER_H_ */

@@ -9,7 +9,7 @@
 /**
  * States Includes
  */
-#include "StateMenu.h"
+#include "../states/StateMenu.h"
 
 State * StateManager::activeState = 0;
 
@@ -34,22 +34,13 @@ void StateManager::SetActiveState(int stateId) {
 	case STATE_NONE:
 		activeState = 0;
 		break;
-	//case STATE_SPLASH:
-	//	activeState = StateIntro::GetIntance();
-	//	break;
 	case STATE_MENU:
 		activeState = StateMenu::GetIntance();
 		break;
-	//case STATE_APP:
-	//	activeState = StateApp::GetIntance();
-	//	break;
 	}
 	if (activeState) activeState->OnActivation();
 }
 State * StateManager::GetActiveState() {
 	return activeState;
 }
-int StateManager::GetActiveStateId() {
-	int retorno = STATE_NONE;
-	return retorno;
-}
+
