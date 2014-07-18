@@ -33,6 +33,7 @@ protected:
 
 class Button : public sf::Drawable, public sf::Transformable {
 public:
+	static std::vector< Button *> buttonList;
 	Button(sf::Text text);
 	sf::Text & getText();
 	sf::RectangleShape & getShape();
@@ -45,6 +46,7 @@ public:
 protected:
 	virtual void draw(sf::RenderTarget& target, sf::RenderStates states) const;
 
+	sf::FloatRect boundingBox;
 	sf::Text m_Text;
 	sf::RectangleShape m_Shape;
 };

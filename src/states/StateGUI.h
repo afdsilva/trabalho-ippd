@@ -1,12 +1,12 @@
 /*
- * StateMenu.h
+ * StateGUI.h
  *
  *  Created on: 23/06/2014
  *      Author: andref
  */
 
-#ifndef STATEMENU_H_
-#define STATEMENU_H_
+#ifndef STATEGUI_H_
+#define STATEGUI_H_
 
 #include <SFML/Graphics.hpp>
 #include <SFML/System/Thread.hpp>
@@ -18,21 +18,30 @@
 #include "State.h"
 #include "../gui/Entidade.h"
 #include "../Graph.h"
+#include "../Quadtree.h"
 #include "../delaunay_threads/DelaunayThread.h"
 
-class StateMenu : public State {
+#include "../App.h"
+
+class StateGUI : public State {
 private:
-	static StateMenu instance;
+	static StateGUI instance;
 private:
-	StateMenu();
-	int n_Threads;
-	VerticeList m_Vertices;
+	sf::RenderWindow * m_Window;
+	StateGUI();
+	int n_Depth;
 	std::list<Vertice> m_VerticeList;
 	TriangleList draw_Triangles;
 	TriangleList m_Triangles;
 	std::mutex mutex;
 	sf::Clock clock;
+	sf::Time totalElapsed;
+
+	Quadtree * quadTree;
+
 	Button * nThreadsText;
+	Button * nThreadsPlus;
+	Button * nThreadsMinus;
 	Button * nTrianglesText;
 	Button * nTimeText;
 	Button * nListSize;
@@ -53,7 +62,7 @@ public:
 	void OnRender(sf::RenderWindow * window);
 
 public:
-	static StateMenu * GetIntance();
+	static StateGUI * GetIntance();
 
 	void KeyPressed(sf::Event::KeyEvent keyEvent);
 	void MouseMoved(sf::Event::MouseMoveEvent mouseMoveEvent);

@@ -8,6 +8,8 @@
 #include "Entidade.h"
 
 std::vector<Entidade *> Entidade::entityList;
+std::vector<Button *> Button::buttonList;
+
 Entidade::Entidade() {
 
 }
@@ -51,15 +53,20 @@ void Entidade::Unload() {
 
 Button::Button(sf::Text text) {
 	m_Text = text;
-	sf::FloatRect boundingBox = m_Text.getGlobalBounds();
-	m_Shape.setPosition(boundingBox.left,boundingBox.top);
-	m_Shape.setSize(sf::Vector2f(boundingBox.width,boundingBox.height));
+	boundingBox.left = this->getPosition().x+5;
+	boundingBox.top = this->getPosition().y+5;
+	boundingBox.width = this->getText().getLocalBounds().width;
+	boundingBox.height = this->getText().getLocalBounds().height;
+
+	m_Shape.setPosition(0,5);
+	m_Shape.setSize(sf::Vector2f(boundingBox.width+3,boundingBox.height+3));
 	m_Shape.setFillColor(sf::Color::Transparent);
 
 }
 bool Button::Collided(sf::Vector2f points) {
-	sf::FloatRect boundingBox = this->m_Shape.getGlobalBounds();
+
 	if (boundingBox.contains(points)) {
+
 		return true;
 	}
 	return false;
@@ -77,6 +84,13 @@ sf::RectangleShape & Button::getShape() {
 	return m_Shape;
 }
 void Button::OnLoop() {
+	boundingBox.left = this->getPosition().x+5;
+	boundingBox.top = this->getPosition().y+5;
+	boundingBox.width = this->getText().getLocalBounds().width;
+	boundingBox.height = this->getText().getLocalBounds().height;
+
+	m_Shape.setPosition(0,5);
+	m_Shape.setSize(sf::Vector2f(boundingBox.width+5,boundingBox.height+5));
 
 }
 void Button::Unload() {

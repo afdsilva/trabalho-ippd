@@ -16,6 +16,9 @@
 #include <iostream>
 #include <exception>
 
+#include "delaunay_tbb/DelaunayTBB.h"
+#include "delaunay_threads/DelaunayThread.h"
+
 using namespace std;
 
 class App : public Eventos {
@@ -24,7 +27,11 @@ private:
 
 public:
 	App();
-	int AppExec();
+	int AppExec(int threads, int entries);
+
+	static int n_Threads;
+	static int n_Entries;
+
 
 private:
 	bool AppInit();

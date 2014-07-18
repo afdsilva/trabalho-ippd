@@ -9,7 +9,9 @@
 #define STATEMANAGER_H_
 enum {
 	STATE_NONE,
-	STATE_MENU,
+	STATE_GUI,
+	STATE_THREAD,
+	STATE_TBB,
 };
 
 #include "../states/State.h"

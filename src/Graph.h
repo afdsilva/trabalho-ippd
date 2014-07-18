@@ -33,6 +33,7 @@ typedef std::vector<Triangle *>::iterator itTriangles;
 typedef std::vector<Vertice> VerticeList;
 typedef std::vector<Vertice>::iterator itVertices;
 
+
 class Vertice {
 public:
 	Vertice() : x(.0f), y(.0f) {}
@@ -46,10 +47,14 @@ public:
 	bool operator==(const Vertice& v) const {
 		return (x == v.x && y == v.y);
 	}
+	Vertice operator-(const Vertice & b) const {
+		return Vertice(b.x - x, b.y - y);
+	}
 	friend std::ostream& operator<<(std::ostream& os, const Vertice& obj) {
 		os << "x = " << obj.x << " y = " << obj.y;
 		return os;
 	}
+	static VerticeList listVertices;
 };
 
 class Edge {
@@ -109,6 +114,8 @@ public:
 	void setCircumCircle();
 	bool containsEdge(const Edge & e) const;
 	bool containsVertex(const Vertice & v) const;
+	Vertice baryCoords(const Vertice & p) const;
+	Vertice getCentroid() const;
 	bool containsTriangle(const Triangle & t) const;
 	friend std::ostream& operator<<(std::ostream& os, const Triangle& obj) {
 		if (&obj != NULL)
@@ -136,53 +143,20 @@ public:
 	}
 	static Triangle & Triangulation(std::vector<Vertice> & m_Vertices);
 
-	std::mutex t_Mutex; //mutex usado na expansao
-	std::mutex r_Mutex; //mutex usado para remover a referencia do triangulo
+	std::mutex t_Mutex; //usado na expansao
+	std::mutex r_Mutex; //usado na procura
+	std::mutex n_Mutex; //usado na atualizacao da quadtree (previne recursao)
 protected:
 	Edge * e0;
 	Edge * e1;
 	Edge * e2;
 	Vertice m_Center;
+	Vertice m_Centroid;
 	float m_R;
 	float m_R2;
 
-};
-
-class Cavity {
-public:
-	Cavity(Triangle & t,const Vertice & v) : m_Triangle(t), m_Vertice(v), m_EdgesList(new EdgeList),  m_EdgesLock(new EdgeList), m_TrianglesCavity(new TriangleList), m_TrianglesLock(new TriangleList), m_TriangleSet(new TriangleList){}
-	void expand();
-	void retriangulate();
-	TriangleList & getNewTriangles() const;
-	TriangleList & getModifiedTriangles() const;
-	bool lockEdges(std::mutex & mutex);
-	void unlockEdges();
-protected:
-	void expand(Triangle & t);
-
-	Triangle & m_Triangle;
-	Vertice m_Vertice;
-	EdgeList * m_EdgesList;
-	EdgeList * m_EdgesLock;
-	TriangleList * m_TrianglesCavity;
-	TriangleList * m_TrianglesLock;
-	TriangleList * m_TriangleSet;
 
 };
-
-class Graph {
-public:
-	Graph(Triangle & descritor) : m_Descritor(&descritor), m_TriangleSet(new TriangleList) {}
-	void updateGraph(Cavity & c, std::mutex & mutex);
-	TriangleList & updateList();
-	Triangle & getDescritor() const;
-protected:
-	void updateList(Triangle & t);
-	Triangle * m_Descritor;
-	TriangleList * m_TriangleSet;
-
-};
-
 
 class GenerateVertices {
 public:

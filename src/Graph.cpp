@@ -7,13 +7,7 @@
 
 #include "Graph.h"
 
-Edge::Edge(Vertice _v0, Vertice _v1) {
-	m_Vertices[0] = _v0;
-	m_Vertices[1] = _v1;
-	m_Triangles[0] = NULL;
-	m_Triangles[1] = NULL;
-}
-
+VerticeList Vertice::listVertices;
 
 Triangle::Triangle(Vertice & a, Vertice & b, Vertice & c) {
 	 //criar um triangulo pelos vertices, cria de 3 novas edges
@@ -21,6 +15,8 @@ Triangle::Triangle(Vertice & a, Vertice & b, Vertice & c) {
 	e1 = new Edge(b,c);
 	e2 = new Edge(c,a);
 	setCircumCircle();
+	m_Centroid.x = (a.x + b.x + c.x) / 3;
+	m_Centroid.y = (a.y + b.y + c.y) / 3;
 }
 Triangle::Triangle(Edge & _e0, Edge & _e1, Edge & _e2) {
 	//criar um triangulo apartir das edges a funcao pai deve chamar o setAdjancency
@@ -29,6 +25,11 @@ Triangle::Triangle(Edge & _e0, Edge & _e1, Edge & _e2) {
 	this->e1 = &_e1;
 	this->e2 = &_e2;
 	setCircumCircle();
+	Vertice a = Edge::CommonVertice(*this->e2,*this->e0); //CA AB
+	Vertice b = Edge::CommonVertice(*this->e0,*this->e1); //AB BC
+	Vertice c = Edge::CommonVertice(*this->e1,*this->e2); //BC CA
+	m_Centroid.x = (a.x + b.x + c.x) / 3;
+	m_Centroid.y = (a.y + b.y + c.y) / 3;
 }
 Triangle::Triangle(Edge & e, Vertice & a) {
 	//criar um triangulo apartir de uma edge e um vertice, atualiza o vertice passado e cria 2 novos
@@ -39,6 +40,8 @@ Triangle::Triangle(Edge & e, Vertice & a) {
 	this->e1 = new Edge(c,a);
 	this->e2 = new Edge(a,b);
 	setCircumCircle();
+	m_Centroid.x = (a.x + b.x + c.x) / 3;
+	m_Centroid.y = (a.y + b.y + c.y) / 3;
 }
 Triangle::~Triangle() {
 	t_Mutex.unlock();
@@ -152,6 +155,19 @@ bool Triangle::containsTriangle(const Triangle & t) const {
 
 	return false;
 }
+Vertice Triangle::baryCoords(const Vertice & p) const {
+	Vertice a = Edge::CommonVertice(*e0,*e1);
+	Vertice b = Edge::CommonVertice(*e1,*e2);
+	Vertice c = Edge::CommonVertice(*e2,*e0);
+	float den = 1 / ((b.y - c.y) * (a.x - c.x) + (c.x - b.x) * (a.y - c.y));
+	Vertice retorno;
+	retorno.x = ((b.y - c.y) * (p.x - c.x) + (c.x - b.x) * (p.y - c.y)) * den;
+	retorno.y = ((c.y - a.y) * (p.x - c.x) + (a.x - c.x) * (p.y - c.y)) * den;
+	return retorno;
+}
+Vertice Triangle::getCentroid() const {
+	return m_Centroid;
+}
 Triangle & Triangle::Triangulation(VerticeList & m_Vertices) {
 	try {
 		if (m_Vertices.size() < 3)
@@ -194,7 +210,12 @@ Triangle & Triangle::Triangulation(VerticeList & m_Vertices) {
 	}
 }
 
-
+Edge::Edge(Vertice _v0, Vertice _v1) {
+	m_Vertices[0] = _v0;
+	m_Vertices[1] = _v1;
+	m_Triangles[0] = NULL;
+	m_Triangles[1] = NULL;
+}
 void Edge::setAdjancency(Triangle & t) {
 	try {
 		if (m_Triangles[0] == NULL)
@@ -261,199 +282,6 @@ bool Edge::hasCommomVertice(Edge & e) {
 	if (a == c || a == d || b == c || b == d)
 		return true;
 	return false;
-}
-
-
-void Cavity::expand() {
-	m_TrianglesLock->clear();
-	m_TrianglesCavity->clear();
-	m_EdgesList->clear();
-	m_EdgesLock->clear();
-	expand(m_Triangle);
-	//destrava todos triangulos apos a expansao
-	std::for_each(m_TrianglesLock->begin(), m_TrianglesLock->end(), [] (Triangle * t) {
-		t->t_Mutex.unlock();
-	} );
-}
-void Cavity::expand(Triangle & t) {
-	try {
-		//insere o triangulo na lista para depois destrancar apos todos triangulos terem sido expandidos
-		m_TrianglesLock->push_back(&t);
-		if (t.t_Mutex.try_lock()) {
-			//verifica se o vertice esta dentro do CircumCircle do triangulo
-			if(t.CCEncompasses(m_Vertice)) {
-				m_TrianglesCavity->push_back(&t);
-
-				Edge * e[3];
-				e[0] = &t.getE0();
-				e[1] = &t.getE1();
-				e[2] = &t.getE2();
-
-				for (int i = 0; i < 3; i++){
-					itEdges found = std::find(m_EdgesList->begin(), m_EdgesList->end(), e[i]);
-					if (found == m_EdgesList->end()) {
-						m_EdgesList->push_back(e[i]);
-						m_EdgesLock->push_back(e[i]);
-					} else {
-						m_EdgesList->erase(found);
-					}
-				}
-
-				for (int i = 0; i < 3; i++){
-					if (!(e[i]->getT1() == NULL))
-						this->expand(*e[i]->getT1());
-					if (!(e[i]->getT2() == NULL))
-						this->expand(*e[i]->getT2());
-				}
-			} else {
-				//destrava o triangulo caso ele n esteja na cavidade
-				t.t_Mutex.unlock();
-			}
-		}
-
-	} catch (std::exception & e) {
-		std::cout << e.what() << std::endl;
-	}
-}
-void Cavity::retriangulate() {
-	m_TriangleSet->clear();
-	EdgeList nEdges;
-	for_each(m_EdgesList->begin(),m_EdgesList->end(), ([&] (Edge * c_Edge) {
-		//cria novas edges
-		//AB -> P = AP, BP => ABP
-		//mas AP e BP vao ser usados nas outras edges tambem
-		Vertice a = c_Edge->getV0();
-		Vertice b = c_Edge->getV1();
-		nEdges.push_back(c_Edge);
-		Edge * ap = new Edge(a,m_Vertice);
-		Edge * bp = new Edge(b,m_Vertice);
-		//verifica se a edge jah n esta na lista
-		bool apv = false, bpv = false;
-		for_each(nEdges.begin(), nEdges.end(),[&](Edge * e) {
-			//parece esquisito mas eh pra colocar o ap e o bp como referencia caso jah esteja na lista
-			if (*ap == *e) {
-				apv = true;
-				ap = e;
-			}
-			if (*bp == *e) {
-				bpv = true;
-				bp = e;
-			}
-
-		});
-		//caso n tenha encontrado alguma das edges na lista, coloca
-		if (!apv)
-			nEdges.push_back(ap);
-		if (!bpv)
-			nEdges.push_back(bp);
-		//cria o novo triangulo com as edges
-		Triangle * nTri = new Triangle(*c_Edge,*ap,*bp);
-		//insere na lista
-		m_TriangleSet->push_back(nTri);
-	}));
-}
-TriangleList & Cavity::getNewTriangles() const {
-	//retorna as edges, usado no updatemesh, para corrigir os triangulos modificados
-	return *m_TriangleSet;
-}
-TriangleList & Cavity::getModifiedTriangles() const {
-	//retorna as edges, usado no updatemesh, para corrigir os triangulos modificados
-	return *m_TrianglesCavity;
-}
-bool Cavity::lockEdges(std::mutex & mutex) {
-	bool retorno = true;
-	EdgeList tmp;
-	try {
-		std::for_each(m_EdgesLock->begin(), m_EdgesLock->end(), [&] (Edge * e){
-			//caso nao consiga adquirir algum dos locks, vai retornar falso
-			if (e->e_Mutex.try_lock()) {
-				tmp.push_back(e);
-			} else {
-				throw 1;
-			}
-		});
-	} catch (int e) {
-//		std::cout << "Cancelando transacao" << std::endl;
-		std::for_each(tmp.begin(), tmp.end(), [&] (Edge * e){
-			e->e_Mutex.unlock();
-		});
-		retorno = false;
-	}
-	return retorno;
-}
-void Cavity::unlockEdges() {
-	std::for_each(m_EdgesLock->begin(), m_EdgesLock->end(), [&] (Edge * e){
-		e->e_Mutex.unlock();
-	});
-}
-
-
-void Graph::updateGraph(Cavity & c, std::mutex & mutex) {
-	//atualizar o grafo requer o seguintes passos:
-	//atualizar o descritor
-	//remover a adjacencia das edges dos triangulos modificados (remove a referencia para eles)
-	bool modifica = false;
-
-	for_each(c.getModifiedTriangles().begin(), c.getModifiedTriangles().end(), [&] (Triangle * t) {
-		//pra cada triangulo, procura a referencia dele proprio nas edges, se o triangulo entrou na cavidade quer dizer que ele nao sera mais usado
-		t->getE0().remAdjancency(*t);
-		t->getE1().remAdjancency(*t);
-		t->getE2().remAdjancency(*t);
-
-		if (t == m_Descritor) {
-			modifica = true;
-		}
-	});
-	//modificar a adjacencia das edges dos novos triangulos (adicionar a referencia para eles)
-	TriangleList newTris = c.getNewTriangles();
-	for_each(c.getNewTriangles().begin(), c.getNewTriangles().end(), [&] (Triangle * t) {
-		//como as referencias jah sao removidas a partir dos triangulos, nao precisa mais trocar a referencia, pode ser colocado em qualquer posicao vazia
-		//no caso testa a 1a, se ela for vazia coloca nela, do contrario, por eliminacao coloca na 2a posicao
-		//se por algum motivo esse teste falha eh pq a logica ta errada e tem q modificar em algum outro lugar (to soh ponderando comigo mesmo)
-//		if (t->getE0().r_Mutex.try_lock())
-//			std::cout << "lock" << std::endl;
-//		else
-//			std::cout << "lock fail" << std::endl;
-		t->getE0().setAdjancency(*t);
-		t->getE1().setAdjancency(*t);
-		t->getE2().setAdjancency(*t);
-	});
-
-	if (modifica) {
-		Triangle * t = c.getNewTriangles().at(0);
-		m_Descritor = t;
-	}
-
-}
-TriangleList & Graph::updateList() {
-	m_TriangleSet->clear();
-	updateList(*m_Descritor);
-	return *m_TriangleSet;
-}
-void Graph::updateList(Triangle & t) {
-	m_TriangleSet->push_back(&t);
-	Edge * e[3];
-	e[0] = &t.getE0();
-	e[1] = &t.getE1();
-	e[2] = &t.getE2();
-	for (int i = 0; i < 3; i++){
-		Triangle * nb[2];
-		nb[0] = e[i]->getT1();
-		nb[1] = e[i]->getT2();
-
-		for (int j = 0; j < 2; j++){
-			if (nb[j] != NULL) {
-				itTriangles found = std::find(m_TriangleSet->begin(), m_TriangleSet->end(), nb[j]);
-				if (found == m_TriangleSet->end()) {
-					this->updateList(*nb[j]);
-				}
-			}
-		}
-	}
-
-}
-Triangle & Graph::getDescritor() const {
-	return * m_Descritor;
 }
 
 

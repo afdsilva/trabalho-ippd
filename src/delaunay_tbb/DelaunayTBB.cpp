@@ -1,20 +1,69 @@
 /*
- * DelaunayThread.cpp
+ * DelaunayTBB.cpp
  *
- *  Created on: 13/07/2014
+ *  Created on: 15/07/2014
  *      Author: andref
  */
 
-#include "DelaunayThread.h"
 
+#include <iostream>
 
-bool Cavity::expand() {
+#include "DelaunayTBB.h"
+
+void DelaunayTBB::operator()( const tbb::blocked_range<size_t>& r ) const {
+	try {
+		//std::cout << "Task Iniciada" << std::endl;
+		for(unsigned int i = r.begin(); i != r.end(); ++i) {
+//			std::cout << m_Vertices[i] << std::endl;
+			bool run = true;
+			while(run) {
+				m_Mutex.lock();
+				Triangle * t = m_Mesh.searchTriangle(m_Vertices[i]);
+				m_Mutex.unlock();
+				if (t == NULL)
+					throw 1;
+				CavityTBB * cavity = new CavityTBB(*t,m_Vertices[i]);
+				if (cavity->expand()) {
+					cavity->retriangulate();
+					m_Mesh.updateGraph(*cavity);
+					m_Mutex.lock();
+					m_Mesh.updateList();
+					m_Mutex.unlock();
+					run = false;
+				}
+				cavity->unlockEdges();
+				cavity->unlockTriangles();
+			}
+		}
+	} catch (std::exception & e) {
+	} catch (int e) {
+//		std::cout << "Triangulo nao encontrado" << std::endl;
+	}
+}
+TriangleList & DelaunayTBB::ExecuteTBB(VerticeList & vertices, int threads) {
+	std::cout << "Iniciando Algoritmo TBB" << std::endl;
+//	GenerateVertices ver(n_Entries,Vertice::listVertices);
+	tbb::task_scheduler_init init(threads);
+	sf::Clock clock;
+	Quadtree * quadtree = new Quadtree(0,0,1024,768,0,3);
+	GraphTBB * m_Mesh = new GraphTBB(Triangle::Triangulation(vertices),*quadtree);
+	tbb::mutex mutex;
+	tbb::parallel_for(tbb::blocked_range<size_t>(0, vertices.size()),DelaunayTBB(vertices,*m_Mesh,mutex));
+	sf::Time elapsed = clock.getElapsedTime();
+	clock.restart();
+
+	std::cout << "Tempo do Algoritmo " << elapsed.asSeconds() << " Entrada: " << vertices.size() << " Threads " << threads << std::endl;
+	return m_Mesh->getTriangleList();
+
+}
+
+bool CavityTBB::expand() {
 	m_TrianglesCavity->clear();
 	m_EdgesList->clear();
 	m_EdgesLock->clear();
 	return expand(m_Triangle);
 }
-bool Cavity::expand(Triangle & t) {
+bool CavityTBB::expand(Triangle & t) {
 	bool retorno = true;
 
 	try {
@@ -64,7 +113,7 @@ bool Cavity::expand(Triangle & t) {
 	}
 	return retorno;
 }
-void Cavity::retriangulate() {
+void CavityTBB::retriangulate() {
 	m_TriangleSet->clear();
 	EdgeList nEdges;
 //	std::cout << "m_EdgesList: " << m_EdgesList->size() << " Cavity Size: " << m_TrianglesCavity->size() << std::endl;
@@ -119,15 +168,15 @@ void Cavity::retriangulate() {
 //	}
 
 }
-TriangleList & Cavity::getNewTriangles() const {
+TriangleList & CavityTBB::getNewTriangles() const {
 	//retorna as edges, usado no updatemesh, para corrigir os triangulos modificados
 	return *m_TriangleSet;
 }
-TriangleList & Cavity::getModifiedTriangles() const {
+TriangleList & CavityTBB::getModifiedTriangles() const {
 	//retorna as edges, usado no updatemesh, para corrigir os triangulos modificados
 	return *m_TrianglesCavity;
 }
-bool Cavity::lockEdges(std::mutex & mutex) {
+bool CavityTBB::lockEdges(tbb::mutex & mutex) {
 	bool retorno = true;
 	EdgeList tmp;
 	mutex.lock();
@@ -150,7 +199,7 @@ bool Cavity::lockEdges(std::mutex & mutex) {
 	mutex.unlock();
 	return retorno;
 }
-bool Cavity::lockTriangles(std::mutex & mutex) {
+bool CavityTBB::lockTriangles(tbb::mutex & mutex) {
 	bool retorno = true;
 	TriangleList tmp;
 	mutex.lock();
@@ -170,12 +219,12 @@ bool Cavity::lockTriangles(std::mutex & mutex) {
 	mutex.unlock();
 	return retorno;
 }
-void Cavity::unlockEdges() {
+void CavityTBB::unlockEdges() {
 	std::for_each(m_EdgesLock->begin(), m_EdgesLock->end(), [&] (Edge * e){
 		e->e_Mutex.unlock();
 	});
 }
-void Cavity::unlockTriangles() {
+void CavityTBB::unlockTriangles() {
 	std::for_each(m_TrianglesCavity->begin(), m_TrianglesCavity->end(), [&] (Triangle * t){
 		t->t_Mutex.unlock();
 	});
@@ -185,15 +234,8 @@ void Cavity::unlockTriangles() {
 }
 
 
-void Graph::updateGraph(Cavity & c, std::mutex & mutex) {
-	//atualizar o grafo requer o seguintes passos:
-	//atualizar o descritor
-	//remover a adjacencia das edges dos triangulos modificados (remove a referencia para eles)
+void GraphTBB::updateGraph(CavityTBB & c) {
 	bool modifica = false;
-	mutex.lock();
-//	if (c.getModifiedTriangles().size() + 2 != c.getNewTriangles().size())
-//		std::cout << "Problema" << std::endl;
-
 	std::for_each(c.getModifiedTriangles().begin(), c.getModifiedTriangles().end(), [&] (Triangle * t) {
 		//pra cada triangulo, procura a referencia dele proprio nas edges, se o triangulo entrou na cavidade quer dizer que ele nao sera mais usado
 		t->getE0().remAdjancency(*t);
@@ -204,7 +246,6 @@ void Graph::updateGraph(Cavity & c, std::mutex & mutex) {
 		}
 	});
 	//modificar a adjacencia das edges dos novos triangulos (adicionar a referencia para eles)
-	TriangleList newTris = c.getNewTriangles();
 	std::for_each(c.getNewTriangles().begin(), c.getNewTriangles().end(), [&] (Triangle * t) {
 		//como as referencias jah sao removidas a partir dos triangulos, nao precisa mais trocar a referencia, pode ser colocado em qualquer posicao vazia
 		//no caso testa a 1a, se ela for vazia coloca nela, do contrario, por eliminacao coloca na 2a posicao
@@ -218,10 +259,9 @@ void Graph::updateGraph(Cavity & c, std::mutex & mutex) {
 		Triangle * t = c.getNewTriangles().at(0);
 		m_Descritor = t;
 	}
-	mutex.unlock();
 
 }
-void Graph::updateList() {
+void GraphTBB::updateList() {
 	m_Quadtree.Clear();
 	m_TrianglesList->clear();
 	updateList(*m_Descritor);
@@ -229,7 +269,7 @@ void Graph::updateList() {
 		t->n_Mutex.unlock();
 	});
 }
-void Graph::updateList(Triangle & t) {
+void GraphTBB::updateList(Triangle & t) {
 	try {
 		if (!t.n_Mutex.try_lock())
 			throw 1;
@@ -255,71 +295,13 @@ void Graph::updateList(Triangle & t) {
 //		std::cout << "Triangulo ja Inserido" << std::endl;
 	}
 }
-Triangle & Graph::getDescritor() const {
+Triangle & GraphTBB::getDescritor() const {
 	return * m_Descritor;
 }
-TriangleList & Graph::getTriangleList() const {
+TriangleList & GraphTBB::getTriangleList() const {
 	return * m_TrianglesList;
 }
-
-void DelaunayThread::operator()(int nThread) {
-		std::cout << "Thread " << nThread << " iniciada " << std::endl;
-		bool run = true;
-		sf::Clock clock;
-		while(run) {
-			Vertice p;
-			Triangle * t = new Triangle();
-			try {
-				m_Mutex.lock();
-				if (m_List.empty()) {
-					m_Mutex.unlock();
-					throw 3;
-				}
-				p = m_List.front();
-				t = searchTriangle(p);
-				m_List.pop_front();
-				m_Mutex.unlock();
-				if (t == NULL) {
-//					std::cout << "Enviando Ponto de volta para fila" << std::endl;
-					m_Mutex.lock();
-					m_List.push_back(p);
-					m_Mutex.unlock();
-					throw 1;
-				}
-				Cavity * cavity = new Cavity(*t,p);
-				if (cavity->expand()) {
-					cavity->retriangulate();
-					m_Mesh.updateGraph(*cavity,m_Mutex);
-					m_Mutex.lock();
-					m_Mesh.updateList();
-					m_Mutex.unlock();
-				} else {
-					m_Mutex.lock();
-					m_List.push_back(p);
-					m_Mutex.unlock();
-//					std::cout << "Cavidade em uso" << std::endl;
-				}
-				cavity->unlockEdges();
-				cavity->unlockTriangles();
-			} catch (int e) {
-				if (e == 3) {
-					run = false;
-				} else {
-					if (e == 1) {
-//						std::cout << "Triangulo invalido" << std::endl;
-//						run = false;
-					}
-				}
-			}
-			m_Mutex.lock();
-			m_ElapsedTime = clock.getElapsedTime();
-			m_Mutex.unlock();
-		}
-		clock.restart();
-		std::cout << "Thread " << nThread << " finalizada" << std::endl;
-
-	}
-Triangle * DelaunayThread::searchTriangle(const Vertice & v) {
+Triangle * GraphTBB::searchTriangle(const Vertice & v) {
 	try {
 		//procura o vertice na lista, apenas um triangulo pode conter o ponto, entao
 		//trava o triangulo caso o ponto encontre, caso o triangulo jah esteja com lock
@@ -327,83 +309,17 @@ Triangle * DelaunayThread::searchTriangle(const Vertice & v) {
 //		std::cout << v << std::endl;
 		TriangleList m_Triangles = m_Quadtree.GetObjectsAt(v.x,v.y);
 
-		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
-//			std::cout << "Encontrado containsVertex: " << std::endl << *t << std::endl;
-			if (t && t->containsVertex(v)) {
-				throw t;
-				if (t->r_Mutex.try_lock())
-					throw t;
-				else
-					throw 1;
-			}
-		});
+		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) { if (t && t->containsVertex(v)) throw t; });
 		//caso nao encontre nenhum triangulo que contenha o ponto (calculo do baricentro n funciona)
 		//aih procura qualquer triangulo que tenha o ponto circunscrito
-		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
-//			std::cout << "Encontrado CCEncompasses: " << std::endl << *t << std::endl;
-			if (t && t->CCEncompasses(v)) {
-				throw t;
-				if (t->r_Mutex.try_lock())
-					throw t;
-				else
-					throw 2;
-			}
-		});
-		//se falha em encontrar da maneira rapida um triangulo q sirva, faz da maneira lenta :v
+		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) { if (t && t->CCEncompasses(v)) throw t; });
+
+		//se falha em encontrar pela quadtree, procura em todos triangulos (possivelmente dah pra otimizar a quadtree, soh nao vou ter tempo pra isso
 		m_Triangles = m_Quadtree.GetObjects();
-		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
-			if (t && t->containsVertex(v)) {
-				throw t;
-				if (t->r_Mutex.try_lock())
-					throw t;
-				else
-					throw 3;
-			}
-		});
-		//caso nao encontre nenhum triangulo que contenha o ponto (calculo do baricentro n funciona)
-		//aih procura qualquer triangulo que tenha o ponto circunscrito
-		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
-			if (t && t->CCEncompasses(v)) {
-				throw t;
-				if (t->r_Mutex.try_lock())
-					throw t;
-				else
-					throw 4;
-			}
-		});
+		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) { if (t && t->CCEncompasses(v)) throw t; });
 	} catch (Triangle * r) {
 		return r;
 	} catch (int e) {
-			std::cout << "Triangulo jah possui lock " << e << std::endl;
 	}
 	return NULL;
-}
-Graph & DelaunayThread::ExecuteThread(VerticeList & vertices, int nthreads, int depth) {
-	Graph * m_Mesh = NULL;
-	try {
-		std::cout << "Iniciando Algorito Threads C++11" << std::endl;
-		std::list<Vertice> m_VerticeList = std::list<Vertice>(vertices.begin(),vertices.end());
-		Triangle * descritor = &Triangle::Triangulation(vertices);
-
-		Quadtree * quadTree = new Quadtree(0.0f,0.0f,1024.0f,768.0f,0,depth);
-		quadTree->AddObject(descritor);
-		m_Mesh = new Graph(*descritor, *quadTree);
-		std::vector<std::thread> threads;
-		sf::Clock clock;
-		clock.restart();
-		std::mutex mutex;
-		sf::Time totalElapsed;
-		DelaunayThread dt(m_VerticeList,*quadTree,*m_Mesh,mutex,totalElapsed);
-		for (int i = 0; i < nthreads; i++) {
-			threads.push_back(std::thread(dt,i));
-		}
-		for(auto & thread : threads)
-			thread.join();
-		cout << "Tempo do Algoritmo " << totalElapsed.asSeconds() << " Entrada: " << vertices.size() << " Threads: " << nthreads << std::endl;
-
-	} catch (int e) {
-
-	}
-
-	return *m_Mesh;
 }

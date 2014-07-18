@@ -9,7 +9,9 @@
 /**
  * States Includes
  */
-#include "../states/StateMenu.h"
+#include "../states/StateGUI.h"
+#include "../states/StateThread.h"
+#include "../states/StateTBB.h"
 
 State * StateManager::activeState = 0;
 
@@ -34,8 +36,14 @@ void StateManager::SetActiveState(int stateId) {
 	case STATE_NONE:
 		activeState = 0;
 		break;
-	case STATE_MENU:
-		activeState = StateMenu::GetIntance();
+	case STATE_GUI:
+		activeState = StateGUI::GetIntance();
+		break;
+	case STATE_THREAD:
+		activeState = StateThread::GetIntance();
+		break;
+	case STATE_TBB:
+		activeState = StateTBB::GetIntance();
 		break;
 	}
 	if (activeState) activeState->OnActivation();
