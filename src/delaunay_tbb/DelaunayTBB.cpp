@@ -109,64 +109,73 @@ bool CavityTBB::expand(Triangle & t) {
 		retorno = false;
 	} catch (int e) {
 		retorno = false;
-//		std::cout << "Cavity::expand EXCECAO: " << e << std::endl;
+//		std::cout << "CavityTBB::expand EXCECAO: " << e << std::endl;
 	}
 	return retorno;
 }
-void CavityTBB::retriangulate() {
-	m_TriangleSet->clear();
-	EdgeList nEdges;
-//	std::cout << "m_EdgesList: " << m_EdgesList->size() << " Cavity Size: " << m_TrianglesCavity->size() << std::endl;
+bool CavityTBB::retriangulate() {
+	bool retorno = true;
+	try {
+		m_TriangleSet->clear();
+		EdgeList nEdges;
 
-	std::for_each(m_EdgesList->begin(),m_EdgesList->end(), ([&] (Edge * c_Edge) {
+		std::for_each(m_EdgesList->begin(),m_EdgesList->end(), ([&] (Edge * c_Edge) {
 
-		//cria novas edges
-		//AB -> P = AP, BP => ABP
-		//mas AP e BP vao ser usados nas outras edges tambem
+			//cria novas edges
+			//AB -> P = AP, BP => ABP
+			//mas AP e BP vao ser usados nas outras edges tambem
 
-		Vertice a = c_Edge->getV0();
-		Vertice b = c_Edge->getV1();
-		nEdges.push_back(c_Edge);
-		Edge * ap = new Edge(a,m_Vertice);
-		Edge * bp = new Edge(b,m_Vertice);
-		//verifica se a edge jah n esta na lista
-		bool apv = false, bpv = false;
-		std::for_each(nEdges.begin(), nEdges.end(),[&](Edge * e) {
-			//parece esquisito mas eh pra colocar o ap e o bp como referencia caso jah esteja na lista
-			if (*ap == *e) {
-				apv = true;
-				ap = e;
-			}
-			if (*bp == *e) {
-				bpv = true;
-				bp = e;
-			}
+			Vertice a = c_Edge->getV0();
+			Vertice b = c_Edge->getV1();
+			nEdges.push_back(c_Edge);
+			Edge * ap = new Edge(a,m_Vertice);
+			Edge * bp = new Edge(b,m_Vertice);
+			//verifica se a edge jah n esta na lista
+			bool apv = false, bpv = false;
+			std::for_each(nEdges.begin(), nEdges.end(),[&](Edge * e) {
+				//parece esquisito mas eh pra colocar o ap e o bp como referencia caso jah esteja na lista
+				if (*ap == *e) {
+					apv = true;
+					ap = e;
+				}
+				if (*bp == *e) {
+					bpv = true;
+					bp = e;
+				}
 
-		});
-		//caso n tenha encontrado alguma das edges na lista, coloca
-		ap->e_Mutex.try_lock();
-		m_EdgesLock->push_back(ap);
-		bp->e_Mutex.try_lock();
-		m_EdgesLock->push_back(bp);
-		if (!apv)
-			nEdges.push_back(ap);
-		if (!bpv)
-			nEdges.push_back(bp);
-		//cria o novo triangulo com as edges
-		Triangle * nTri = new Triangle(*c_Edge,*ap,*bp);
-		nTri->t_Mutex.lock();
+			});
+			ap->e_Mutex.try_lock();
+			m_EdgesLock->push_back(ap);
+			bp->e_Mutex.try_lock();
+			m_EdgesLock->push_back(bp);
+			//caso n tenha encontrado alguma das edges na lista, coloca
+			if (!apv)
+				nEdges.push_back(ap);
+			if (!bpv)
+				nEdges.push_back(bp);
+			//cria o novo triangulo com as edges
+			Triangle * nTri = new Triangle(*c_Edge,*ap,*bp);
+			nTri->t_Mutex.lock();
 
-		//insere na lista
-		m_TriangleSet->push_back(nTri);
-	}));
-//	if (m_TriangleSet->size() != m_TrianglesCavity->size()+2) {
-//		int setsize = m_TriangleSet->size();
-//		int cavitysize = m_TrianglesCavity->size();
-//		int edgessize = m_EdgesList->size();
-//		std::cout << "Problema na retriangulacao set = " << setsize << " cavity = " << cavitysize << " edge = " << edgessize << std::endl;
-//
-//	}
+			//insere na lista
+			m_TriangleSet->push_back(nTri);
+		}));
+		if (m_TriangleSet->size() != m_TrianglesCavity->size()+2) {
+			throw 1;
+		}
+		retorno = true;
+	} catch (std::exception & e) {
+		retorno = false;
 
+	} catch (int e) {
+		int setsize = m_TriangleSet->size();
+		int cavitysize = m_TrianglesCavity->size();
+		int edgessize = m_EdgesList->size();
+		std::cout << "Problema na retriangulacao set = " << setsize << " cavity = " << cavitysize << " edge = " << edgessize << std::endl;
+		retorno = false;
+
+	}
+	return retorno;
 }
 TriangleList & CavityTBB::getNewTriangles() const {
 	//retorna as edges, usado no updatemesh, para corrigir os triangulos modificados

@@ -152,6 +152,49 @@ void Quadtree::Clear() {
 		objects.clear();
 	}
 }
+
+int Quadtree::GetQuadrantSize(float _x, float _y) {
+	int retorno = 0;
+	if (level == maxLevel) {
+		return objects.size();
+	} else {
+		retorno += NW->GetTreeSize();
+		retorno += NE->GetTreeSize();
+		retorno += SW->GetTreeSize();
+		retorno += SE->GetTreeSize();
+
+		if (_x > x + width / 2.0f && _x < x + width) {
+			if (_y > y + height / 2.0f && _y < y + height) {
+				//SE
+				retorno += SE->GetQuadrantSize(_x,_y);
+			} else if (_y > y && _y <= y + height / 2.0f) {
+				//NE
+				retorno += NE->GetQuadrantSize(_x,_y);
+			}
+		} else if (_x > x && _x <= x + width / 2.0f) {
+			if (_y > y + height / 2.0f && _y < y + height) {
+				//SW
+				retorno += SW->GetQuadrantSize(_x,_y);
+			} else if (_y > y && _y <= y + height / 2.0f) {
+				//NW
+				retorno += NW->GetQuadrantSize(_x,_y);
+			}
+		}
+	}
+	return retorno;
+}
+int Quadtree::GetTreeSize() {
+	int retorno = 0;
+	if (level == maxLevel) {
+		return objects.size();
+	} else {
+		retorno += NW->GetTreeSize();
+		retorno += NE->GetTreeSize();
+		retorno += SW->GetTreeSize();
+		retorno += SE->GetTreeSize();
+	}
+	return retorno;
+}
 bool Quadtree::Inserted(Triangle * object) {
 	bool retorno = false;
 	try {

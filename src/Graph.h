@@ -55,6 +55,7 @@ public:
 		return os;
 	}
 	static VerticeList listVertices;
+	bool cowjuggling = false;
 };
 
 class Edge {

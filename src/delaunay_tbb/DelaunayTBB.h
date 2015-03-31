@@ -20,7 +20,7 @@ class CavityTBB {
 public:
 	CavityTBB(Triangle & t,const Vertice & v) : m_Triangle(t), m_Vertice(v), m_EdgesList(new EdgeList),  m_EdgesLock(new EdgeList), m_TrianglesCavity(new TriangleList), m_TrianglesLock(new TriangleList), m_TriangleSet(new TriangleList){}
 	bool expand();
-	void retriangulate();
+	bool retriangulate();
 	TriangleList & getNewTriangles() const;
 	TriangleList & getModifiedTriangles() const;
 	bool lockEdges(tbb::mutex & mutex);

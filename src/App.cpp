@@ -11,8 +11,8 @@ int App::n_Threads = 2;
 int App::n_Entries = 1000;
 
 int main(int argc, char **argv) {
-	int threads = App::n_Threads;
-	int entries = App::n_Entries;
+	int threads = 2;
+	int entries = 1000;
 	int activestate = STATE_GUI;
 	std::string filename;
 	bool nogui = false;

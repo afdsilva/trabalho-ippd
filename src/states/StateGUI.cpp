@@ -66,6 +66,11 @@ void StateGUI::OnDeactivation() {
 	Entidade::entityList.clear();
 }
 void StateGUI::OnLoop() {
+	if (m_Mesh) {
+		mutex.lock();
+		m_Triangles = m_Mesh->getTriangleList();
+		mutex.unlock();
+	}
 	std::string text = "Threads: " + std::to_string(App::n_Threads);
 	nThreadsText->getText().setString(text);
 	std::string textl = "Lista: " + std::to_string(m_VerticeList.size());
@@ -81,9 +86,6 @@ void StateGUI::OnLoop() {
 //	std::for_each(m_Triangles.begin(), m_Triangles.end(), [&](Triangle * t) {
 //		quadTree->AddObject(t);
 //	});
-	if (m_Mesh) {
-		m_Triangles = m_Mesh->getTriangleList();
-	}
 	std::for_each(Button::buttonList.begin(),Button::buttonList.end(), [&] (Button * b) {
 		b->OnLoop();
 	});
@@ -206,8 +208,9 @@ void StateGUI::KeyPressed(sf::Event::KeyEvent keyEvent) {
 }
 void StateGUI::MouseMoved(sf::Event::MouseMoveEvent mouseMoveEvent) {
 	draw_Triangles.clear();
+	TriangleList searchQuadTree;
 	if (quadTree)
-		draw_Triangles = quadTree->GetObjectsAt((float)mouseMoveEvent.x, (float)mouseMoveEvent.y);
+		searchQuadTree = quadTree->GetObjectsAt((float)mouseMoveEvent.x, (float)mouseMoveEvent.y);
 
 	if (cavity) {
 		Triangle * search = NULL;
@@ -219,10 +222,15 @@ void StateGUI::MouseMoved(sf::Event::MouseMoveEvent mouseMoveEvent) {
 		});
 		if (search) {
 			Cavity * cavity = new Cavity(*search,p);
-			cavity->expand();
-			cavity->retriangulate();
-			draw_Triangles = cavity->getNewTriangles();
+			if (cavity->expand()) {
+				cavity->retriangulate();
+				draw_Triangles = cavity->getNewTriangles();
+			}
+			cavity->unlockEdges();
+			cavity->unlockTriangles();
 		}
+	} else {
+		draw_Triangles = searchQuadTree;
 	}
 	if (nThreadsPlus->Collided(sf::Vector2f(mouseMoveEvent.x, mouseMoveEvent.y))) {
 		nThreadsPlus->getShape().setOutlineThickness(1.0f);

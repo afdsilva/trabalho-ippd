@@ -13,48 +13,58 @@ void DelaunayThread::operator()(int nThread) {
 		sf::Clock clock;
 		while(run) {
 			Vertice p;
-			Triangle * t = new Triangle();
+			Triangle * t = NULL;
+			Cavity * cavity = NULL;
 			try {
 				m_Mutex.lock();
-				if (m_List.empty()) {
-					m_Mutex.unlock();
-					throw 3;
-				}
+				if (m_List.empty())
+					throw 1; //termina execucao da thread
 				p = m_List.front();
-				t = searchTriangle(p);
 				m_List.pop_front();
+				t = searchTriangle(p);
 				m_Mutex.unlock();
-				if (t == NULL) {
-//					std::cout << "Enviando Ponto de volta para fila" << std::endl;
-					m_Mutex.lock();
-					m_List.push_back(p);
-					m_Mutex.unlock();
-					throw 1;
-				}
-				Cavity * cavity = new Cavity(*t,p);
+				if (t == NULL)
+					throw 2; // envia ponto de volta para fila, triangulo n encontrado
+				cavity = new Cavity(*t,p);
 				if (cavity->expand()) {
-					cavity->retriangulate();
+					if (!cavity->retriangulate())
+						throw 3; // envia o ponto de volta para fila, cavidade com problema
 					m_Mesh.updateGraph(*cavity,m_Mutex);
 					m_Mutex.lock();
 					m_Mesh.updateList();
 					m_Mutex.unlock();
 				} else {
-					m_Mutex.lock();
-					m_List.push_back(p);
-					m_Mutex.unlock();
-//					std::cout << "Cavidade em uso" << std::endl;
+					throw 4; //cavidade em uso
 				}
 				cavity->unlockEdges();
 				cavity->unlockTriangles();
 			} catch (int e) {
-				if (e == 3) {
+				if (e == 1) {
 					run = false;
 				} else {
-					if (e == 1) {
-//						std::cout << "Triangulo invalido" << std::endl;
-//						run = false;
+					if (e == 2) {
+						std::cout << "Triangulo não encontrado" << std::endl;
+					} else {
+						if (e == 3) {
+							std::cout << "Cavidade com problema" << std::endl;
+							if (p.cowjuggling)
+								run = false;
+							p.cowjuggling = true;
+						}
+						if (e == 4) {
+//							std::cout << "Cavidade em uso" << std::endl;
+						}
+						if (!(cavity == NULL)) {
+//							std::cout << "Destravando cavidade" << std::endl;
+							cavity->unlockEdges();
+							cavity->unlockTriangles();
+						}
 					}
+//					std::cout << "Enviando Ponto de volta para fila" << std::endl;
+					m_Mutex.lock();
+					m_List.push_back(p);
 				}
+				m_Mutex.unlock();
 			}
 			m_Mutex.lock();
 			m_ElapsedTime = clock.getElapsedTime();
@@ -70,30 +80,33 @@ Triangle * DelaunayThread::searchTriangle(const Vertice & v) {
 		//trava o triangulo caso o ponto encontre, caso o triangulo jah esteja com lock
 		//retorna NULL e procura por outra cavidade
 //		std::cout << v << std::endl;
-		TriangleList m_Triangles = m_Quadtree.GetObjectsAt(v.x,v.y);
+		TriangleList m_Triangles;
+		if (!v.cowjuggling) { //acontece que as vezes nao consegue encontrar o objeto que "presta" e fica num loop infinito, esse drible da vaca deve solucionar esse problema
+			m_Triangles = m_Quadtree.GetObjectsAt(v.x,v.y);
 
-		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
-//			std::cout << "Encontrado containsVertex: " << std::endl << *t << std::endl;
-			if (t && t->containsVertex(v)) {
-				throw t;
-				if (t->r_Mutex.try_lock())
+			std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
+	//			std::cout << "Encontrado containsVertex: " << std::endl << *t << std::endl;
+				if (t && t->containsVertex(v)) {
 					throw t;
-				else
-					throw 1;
-			}
-		});
-		//caso nao encontre nenhum triangulo que contenha o ponto (calculo do baricentro n funciona)
-		//aih procura qualquer triangulo que tenha o ponto circunscrito
-		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
-//			std::cout << "Encontrado CCEncompasses: " << std::endl << *t << std::endl;
-			if (t && t->CCEncompasses(v)) {
-				throw t;
-				if (t->r_Mutex.try_lock())
+					if (t->r_Mutex.try_lock())
+						throw t;
+					else
+						throw 1;
+				}
+			});
+			//caso nao encontre nenhum triangulo que contenha o ponto (calculo do baricentro n funciona)
+			//aih procura qualquer triangulo que tenha o ponto circunscrito
+			std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
+	//			std::cout << "Encontrado CCEncompasses: " << std::endl << *t << std::endl;
+				if (t && t->CCEncompasses(v)) {
 					throw t;
-				else
-					throw 2;
-			}
-		});
+					if (t->r_Mutex.try_lock())
+						throw t;
+					else
+						throw 2;
+				}
+			});
+		}
 		//se falha em encontrar da maneira rapida um triangulo q sirva, faz da maneira lenta :v
 		m_Triangles = m_Quadtree.GetObjects();
 		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
@@ -210,60 +223,69 @@ bool Cavity::expand(Triangle & t) {
 	}
 	return retorno;
 }
-void Cavity::retriangulate() {
-	m_TriangleSet->clear();
-	EdgeList nEdges;
-//	std::cout << "m_EdgesList: " << m_EdgesList->size() << " Cavity Size: " << m_TrianglesCavity->size() << std::endl;
+bool Cavity::retriangulate() {
+	bool retorno = true;
+	try {
+		m_TriangleSet->clear();
+		EdgeList nEdges;
 
-	std::for_each(m_EdgesList->begin(),m_EdgesList->end(), ([&] (Edge * c_Edge) {
+		std::for_each(m_EdgesList->begin(),m_EdgesList->end(), ([&] (Edge * c_Edge) {
 
-		//cria novas edges
-		//AB -> P = AP, BP => ABP
-		//mas AP e BP vao ser usados nas outras edges tambem
+			//cria novas edges
+			//AB -> P = AP, BP => ABP
+			//mas AP e BP vao ser usados nas outras edges tambem
 
-		Vertice a = c_Edge->getV0();
-		Vertice b = c_Edge->getV1();
-		nEdges.push_back(c_Edge);
-		Edge * ap = new Edge(a,m_Vertice);
-		Edge * bp = new Edge(b,m_Vertice);
-		//verifica se a edge jah n esta na lista
-		bool apv = false, bpv = false;
-		std::for_each(nEdges.begin(), nEdges.end(),[&](Edge * e) {
-			//parece esquisito mas eh pra colocar o ap e o bp como referencia caso jah esteja na lista
-			if (*ap == *e) {
-				apv = true;
-				ap = e;
-			}
-			if (*bp == *e) {
-				bpv = true;
-				bp = e;
-			}
+			Vertice a = c_Edge->getV0();
+			Vertice b = c_Edge->getV1();
+			nEdges.push_back(c_Edge);
+			Edge * ap = new Edge(a,m_Vertice);
+			Edge * bp = new Edge(b,m_Vertice);
+			//verifica se a edge jah n esta na lista
+			bool apv = false, bpv = false;
+			std::for_each(nEdges.begin(), nEdges.end(),[&](Edge * e) {
+				//parece esquisito mas eh pra colocar o ap e o bp como referencia caso jah esteja na lista
+				if (*ap == *e) {
+					apv = true;
+					ap = e;
+				}
+				if (*bp == *e) {
+					bpv = true;
+					bp = e;
+				}
 
-		});
-		//caso n tenha encontrado alguma das edges na lista, coloca
-		ap->e_Mutex.try_lock();
-		m_EdgesLock->push_back(ap);
-		bp->e_Mutex.try_lock();
-		m_EdgesLock->push_back(bp);
-		if (!apv)
-			nEdges.push_back(ap);
-		if (!bpv)
-			nEdges.push_back(bp);
-		//cria o novo triangulo com as edges
-		Triangle * nTri = new Triangle(*c_Edge,*ap,*bp);
-		nTri->t_Mutex.lock();
+			});
+			//caso n tenha encontrado alguma das edges na lista, coloca
+			ap->e_Mutex.try_lock();
+			m_EdgesLock->push_back(ap);
+			bp->e_Mutex.try_lock();
+			m_EdgesLock->push_back(bp);
+			if (!apv)
+				nEdges.push_back(ap);
+			if (!bpv)
+				nEdges.push_back(bp);
+			//cria o novo triangulo com as edges
+			Triangle * nTri = new Triangle(*c_Edge,*ap,*bp);
+			nTri->t_Mutex.lock();
 
-		//insere na lista
-		m_TriangleSet->push_back(nTri);
-	}));
-//	if (m_TriangleSet->size() != m_TrianglesCavity->size()+2) {
+			//insere na lista
+			m_TriangleSet->push_back(nTri);
+		}));
+		if (m_TriangleSet->size() != m_TrianglesCavity->size()+2) {
+			throw 1;
+
+		}
+		retorno = true;
+	} catch (std::exception & e) {
+		retorno = false;
+
+	} catch (int e) {
 //		int setsize = m_TriangleSet->size();
 //		int cavitysize = m_TrianglesCavity->size();
 //		int edgessize = m_EdgesList->size();
 //		std::cout << "Problema na retriangulacao set = " << setsize << " cavity = " << cavitysize << " edge = " << edgessize << std::endl;
-//
-//	}
-
+		retorno = false;
+	}
+	return retorno;
 }
 TriangleList & Cavity::getNewTriangles() const {
 	//retorna as edges, usado no updatemesh, para corrigir os triangulos modificados
@@ -406,4 +428,19 @@ Triangle & Graph::getDescritor() const {
 }
 TriangleList & Graph::getTriangleList() const {
 	return * m_TrianglesList;
+}
+Triangle * Graph::searchTriangle(const Vertice & v) const {
+	TriangleList m_Triangles = m_Quadtree.GetObjectsAt(v.x, v.y);
+	try {
+		std::for_each(m_Triangles.begin(), m_Triangles.end(), [&] (Triangle * t) {
+			if (t && t->r_Mutex.try_lock()) {
+				if (t->containsVertex(v))
+					throw t;
+				}
+				t->r_Mutex.unlock();
+		});
+	} catch (Triangle * t) {
+		return t;
+	}
+	return NULL;
 }

@@ -21,6 +21,8 @@ public:
 	void					AddObject(Triangle *object);
 	vector<Triangle*>		GetObjectsAt(float x, float y);
 	vector<Triangle*>		GetObjects();
+	int						GetQuadrantSize(float _x, float _y);
+	int						GetTreeSize();
 	void					Clear();
 	bool					Inserted(Triangle * object);
 

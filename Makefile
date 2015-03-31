@@ -42,7 +42,7 @@ StateThread.o: src/states/StateThread.cpp src/states/StateThread.h
 
 Dependecias:
 	sudo apt-get install libglew1.5 libjpeg62 libtbb-dev
-	ln -s /usr/lib/x86_64-linux-gnu/libGLEW.so.1.8 /usr/lib/x86_64-linux-gnu/libGLEW.so.1.5
+	sudo ln -s /usr/lib/x86_64-linux-gnu/libGLEW.so.1.8 /usr/lib/x86_64-linux-gnu/libGLEW.so.1.5
 clean:
 	rm *.o
 	rm $(EXECUTABLE)
